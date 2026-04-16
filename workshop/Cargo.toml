@@ -1,0 +1,8 @@
+[package]
+name = "workshop-exercises"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+futures = "0.3"
+mio = { version = "1", features = ["net", "os-poll"] }

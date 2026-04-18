@@ -64,8 +64,8 @@ struct Conn {
     batch_latency: Option<Duration>,
 
     // Total progress.
-    sent: usize,   // total batches sent
-    total: usize,  // total requests to send
+    sent: usize,  // total batches sent
+    total: usize, // total requests to send
     conn_id: usize,
 
     // Whether this connection has been established (first writable event).
@@ -377,14 +377,27 @@ fn print_stats(label: &str, latencies: &mut [Duration], elapsed: Duration) {
 
     println!(
         "{}: {:.2} requests per second, {:.2}s total",
-        label, rps, elapsed.as_secs_f64(),
+        label,
+        rps,
+        elapsed.as_secs_f64(),
     );
     println!();
     println!("Latency by percentile distribution:");
     // Print at doubling percentile resolution, similar to redis-benchmark.
     let percentiles = [
-        0.0, 50.0, 75.0, 87.5, 93.75, 96.875, 98.4375, 99.21875, 99.609375,
-        99.8046875, 99.90234375, 99.951171875, 100.0,
+        0.0,
+        50.0,
+        75.0,
+        87.5,
+        93.75,
+        96.875,
+        98.4375,
+        99.21875,
+        99.609375,
+        99.8046875,
+        99.90234375,
+        99.951171875,
+        100.0,
     ];
     for &pct in &percentiles {
         let idx = ((pct / 100.0) * (len - 1) as f64) as usize;
@@ -402,10 +415,7 @@ fn print_stats(label: &str, latencies: &mut [Duration], elapsed: Duration) {
 
     println!();
     println!("Summary:");
-    println!(
-        "  throughput: {:.2} requests per second",
-        rps,
-    );
+    println!("  throughput: {:.2} requests per second", rps,);
     println!(
         "  latency (msec): avg {:.3}, min {:.3}, p50 {:.3}, p95 {:.3}, p99 {:.3}, max {:.3}",
         avg.as_secs_f64() * 1000.0,

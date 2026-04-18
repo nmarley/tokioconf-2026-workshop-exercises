@@ -5,11 +5,9 @@ pub fn build_runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .enable_metrics_poll_time_histogram()
-        .metrics_poll_time_histogram_configuration(
-            tokio::runtime::HistogramConfiguration::log(
-                tokio::runtime::LogHistogram::default(),
-            ),
-        )
+        .metrics_poll_time_histogram_configuration(tokio::runtime::HistogramConfiguration::log(
+            tokio::runtime::LogHistogram::default(),
+        ))
         .build()
         .unwrap()
 }
@@ -92,7 +90,10 @@ fn print_task_metrics(monitor: &tokio_metrics::TaskMonitor) {
     println!("  Instrumented tasks:     {}", metrics.instrumented_count);
     println!("  Dropped tasks:          {}", metrics.dropped_count);
     println!("  Total polls:            {}", metrics.total_poll_count);
-    println!("  Total poll duration:    {:.2?}", metrics.total_poll_duration);
+    println!(
+        "  Total poll duration:    {:.2?}",
+        metrics.total_poll_duration
+    );
     println!(
         "  Mean poll duration:     {:.2?}",
         metrics.mean_poll_duration()

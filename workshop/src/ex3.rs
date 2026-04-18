@@ -93,11 +93,7 @@ impl Reactor {
     //   3. Call self.poll.registry().register(source, token, interest)
     //      to tell mio to watch this socket. Unwrap the result.
     //   4. Return the token
-    fn register(
-        &mut self,
-        source: &mut impl mio::event::Source,
-        interest: Interest,
-    ) -> Token {
+    fn register(&mut self, source: &mut impl mio::event::Source, interest: Interest) -> Token {
         let _ = (source, interest);
         todo!("implement register")
     }

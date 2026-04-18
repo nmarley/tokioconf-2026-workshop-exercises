@@ -57,11 +57,7 @@ impl Reactor {
 impl Reactor {
     // Register an I/O source with mio and return its unique token.
     // Called once per socket at construction time.
-    fn register(
-        &mut self,
-        source: &mut impl mio::event::Source,
-        interest: Interest,
-    ) -> Token {
+    fn register(&mut self, source: &mut impl mio::event::Source, interest: Interest) -> Token {
         let token = Token(self.next_token);
         self.next_token += 1;
         self.poll

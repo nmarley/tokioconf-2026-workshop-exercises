@@ -48,13 +48,27 @@ struct Executor {
     thread: Thread,
 }
 
+impl Executor {
+    fn new() -> Self {
+        Self {
+            queue: Mutex::new(VecDeque::new()),
+            thread: thread::current(),
+        }
+    }
+}
+
 struct Task {
     future: Mutex<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>,
     executor: Arc<Executor>,
 }
 
-// TODO: Implement ArcWake for Task (same as exercise 2.1).
-// wake_by_ref should push the task onto the queue and unpark the thread.
+impl ArcWake for Task {
+    // should push the task onto the queue and unpark the thread.
+    fn wake_by_ref(t: &Arc<Task>) {
+        t.executor.queue.lock().unwrap().push_back(t.clone());
+        t.executor.thread.unpark();
+    }
+}
 
 // TODO: Define a thread-local to store the current executor.
 //
@@ -64,12 +78,14 @@ struct Task {
 // block_on() sets this before entering the poll loop. spawn() reads it
 // to find the run queue.
 
+thread_local! {
+    static CURRENT: Cell<Option<Arc<Executor>>> = const { Cell::new(None) };
+}
+
 /// Spawn a new task onto the current executor.
 ///
 /// Panics if called outside of block_on().
 pub fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
-    // TODO: Implement spawn.
-    //
     // 1. Read the Arc<Executor> from the thread-local (take it out)
     //    - Panic if None (spawn called outside block_on)
     // 2. Create a Task wrapping the future
@@ -79,14 +95,21 @@ pub fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
     //
     // The take-then-put-back pattern is needed because Cell::take() moves
     // the value out. You must put it back or the next spawn() will panic.
-    let _ = fut;
-    todo!("implement spawn")
+
+    let executor = CURRENT
+        .with(|cell| cell.take())
+        .expect("spawn called outside block_on");
+    let task = Arc::new(Task {
+        future: Mutex::new(Box::pin(fut)),
+        executor: executor.clone(),
+    });
+    executor.queue.lock().unwrap().push_back(task);
+    executor.thread.unpark();
+    CURRENT.with(|cell| cell.set(Some(executor)));
 }
 
 /// Run a future to completion, allowing it to spawn additional tasks.
 pub fn block_on(fut: impl Future<Output = ()> + Send + 'static) {
-    // TODO: Implement block_on with spawn support.
-    //
     // 1. Create the Executor (same as 2.1)
     // 2. Store it in the thread-local so spawn() works
     // 3. Create an AtomicBool `done` flag. Wrap the main future in an async
@@ -99,8 +122,37 @@ pub fn block_on(fut: impl Future<Output = ()> + Send + 'static) {
     //      return (even if spawned tasks are still pending).
     //    - Otherwise, park the thread and wait for a wake.
     // 6. Clear the thread-local before returning.
-    let _ = fut;
-    todo!("implement block_on with spawn support")
+    let executor = Arc::new(Executor::new());
+    CURRENT.with(|cell| cell.set(Some(executor.clone())));
+
+    let done = Arc::new(AtomicBool::new(false));
+    let done_clone = done.clone();
+
+    let wrapped = async move {
+        fut.await;
+        done_clone.store(true, Ordering::SeqCst);
+    };
+
+    let task = Arc::new(Task {
+        future: Mutex::new(Box::pin(wrapped)),
+        executor: executor.clone(),
+    });
+    executor.queue.lock().unwrap().push_back(task);
+
+    loop {
+        loop {
+            let task = executor.queue.lock().unwrap().pop_front();
+            let Some(task) = task else { break };
+            let waker = futures::task::waker(task.clone());
+            let cx = &mut Context::from_waker(&waker);
+            let _ = task.future.lock().unwrap().as_mut().poll(cx);
+        }
+        if done.load(Ordering::SeqCst) {
+            CURRENT.with(|cell| cell.take());
+            return;
+        }
+        thread::park();
+    }
 }
 
 pub fn run() {

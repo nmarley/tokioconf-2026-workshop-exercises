@@ -42,9 +42,8 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
 struct Inner<T> {
-    // TODO: add fields for the value and the waker.
-    // Remove _phantom once you have a field that uses T.
-    _phantom: std::marker::PhantomData<T>,
+    value: Option<T>,
+    waker: Option<Waker>,
 }
 
 pub struct Sender<T> {
@@ -58,7 +57,8 @@ pub struct Receiver<T> {
 pub fn oneshot<T>() -> (Sender<T>, Receiver<T>) {
     // TODO: update the Inner construction once you've added fields
     let inner = Arc::new(Mutex::new(Inner {
-        _phantom: std::marker::PhantomData,
+        value: None,
+        waker: None,
     }));
     (
         Sender {
@@ -70,17 +70,32 @@ pub fn oneshot<T>() -> (Sender<T>, Receiver<T>) {
 
 impl<T> Sender<T> {
     pub fn send(self, value: T) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.value = Some(value);
         // TODO: lock the inner state, store the value, wake the receiver
         // if it has registered a waker
+        if let Some(waker) = guard.waker.take() {
+            waker.wake()
+        }
     }
 }
+
+// - Lock the inner state
+// - Store the value (guard.value = Some(value))
+// - If a waker is stored, .take() it and call .wake()
 
 impl<T> Future for Receiver<T> {
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
         // TODO: lock the inner state, check for a value, store waker if absent
-        todo!()
+        // todo!()
+        let mut guard = self.inner.lock().unwrap();
+        if let Some(value) = guard.value.take() {
+            return Poll::Ready(value);
+        }
+        guard.waker = Some(cx.waker().clone());
+        Poll::Pending
     }
 }
 

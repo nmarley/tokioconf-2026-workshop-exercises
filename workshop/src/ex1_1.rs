@@ -36,10 +36,16 @@ use std::task::{Context, Poll};
 
 pub struct YieldNow {
     // TODO: add a field to track whether we have already yielded
+    // 1. Add a field to YieldNow that tracks whether poll() has been called
+    //    before.
+    have_yielded: bool,
 }
 
 pub fn yield_now() -> YieldNow {
-    todo!()
+    // 2. In yield_now(), construct YieldNow in its initial state.
+    YieldNow {
+        have_yielded: false,
+    }
 }
 
 impl Future for YieldNow {
@@ -49,7 +55,15 @@ impl Future for YieldNow {
         // TODO: check if we already yielded.
         //   - If not: mark that we have, wake the executor, return Pending.
         //   - If so: return Ready(()).
-        todo!()
+        // 3. In poll():
+        //    - If this is the first poll, record that we've yielded, wake the
+        //      executor, and return Pending.
+        //    - If this is the second poll, return Ready(()).
+        if !self.have_yielded {
+            self.have_yielded = true;
+            return Poll::Pending;
+        }
+        Poll::Ready(())
     }
 }
 

@@ -49,6 +49,21 @@ use std::thread::{self, Thread};
 //   - queue: Mutex<VecDeque<Arc<Task>>>   (the run queue, shared with tasks)
 //   - thread: Thread                       (so wakers can call thread.unpark())
 
+pub struct Executor {
+    // the run queue, shared with tasks
+    pub queue: Mutex<VecDeque<Arc<Task>>>,
+    pub thread: Thread,
+}
+
+impl Executor {
+    fn new() -> Self {
+        Self {
+            queue: Mutex::new(VecDeque::new()),
+            thread: thread::current(),
+        }
+    }
+}
+
 // TODO: Define a Task struct.
 //
 // Fields:
@@ -59,6 +74,15 @@ use std::thread::{self, Thread};
 //   - executor: Arc<Executor>
 //       Back-reference so the waker can find the run queue and thread handle.
 
+pub struct Task {
+    // The Mutex is required because ArcWake needs Task: Sync. On a
+    // single-threaded executor, the lock is never actually contended.
+    // Pin<Box<...>> heap-allocates the future and pins it so poll() is safe.
+    pub future: Mutex<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>,
+    // Back-reference so the waker can find the run queue and thread handle.
+    pub executor: Arc<Executor>,
+}
+
 // TODO: Implement ArcWake for Task.
 //
 // The `futures` crate provides the ArcWake trait. Implementing it lets you
@@ -68,19 +92,24 @@ use std::thread::{self, Thread};
 //   1. Push a clone of the Arc<Task> onto the executor's run queue
 //   2. Call executor.thread.unpark() to wake the executor
 
+impl ArcWake for Task {
+    fn wake_by_ref(t: &Arc<Task>) {
+        t.executor.queue.lock().unwrap().push_back(t.clone());
+        t.executor.thread.unpark();
+    }
+}
+
 /// Run a future to completion on a new single-threaded executor.
 ///
 /// This function blocks the current thread until the future completes.
 pub fn block_on(fut: impl Future<Output = ()> + Send + 'static) {
-    // TODO: Implement the executor loop.
-    //
     // Steps:
     //   1. Create an Executor (with an empty queue and thread::current())
     //   2. Wrap `fut` in a Task and push it onto the queue
     //   3. Loop:
     //      a. Pop tasks from the queue and poll each one
     //         - Create a waker from the Arc<Task> using futures::task::waker()
-    //         - Create a Context from the waker
+    //         - create a context from the waker
     //         - Lock the task's future and poll it
     //         - If Ready: we're done, return
     //         - If Pending: the waker will re-enqueue the task later
@@ -88,8 +117,30 @@ pub fn block_on(fut: impl Future<Output = ()> + Send + 'static) {
     //
     // Watch out: don't hold the queue lock while polling. If the future
     // calls wake() (which locks the queue), you'll deadlock.
-    let _ = fut;
-    todo!("implement block_on")
+    // let _ = fut;
+    // todo!("implement block_on")
+
+    let executor = Arc::new(Executor::new());
+    let task = Arc::new(Task {
+        future: Mutex::new(Box::pin(fut)),
+        executor: executor.clone(),
+    });
+
+    executor.queue.lock().unwrap().push_back(task);
+    loop {
+        // pop task
+        let task = executor.queue.lock().unwrap().pop_front();
+
+        if let Some(task) = task {
+            let waker = futures::task::waker(task.clone());
+            let cx = &mut Context::from_waker(&waker);
+            if task.future.lock().unwrap().as_mut().poll(cx).is_ready() {
+                return;
+            }
+        } else {
+            thread::park();
+        }
+    }
 
     // crate::solutions::ex2_1::block_on(fut)
 }

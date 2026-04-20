@@ -61,6 +61,7 @@ impl Future for YieldNow {
         //    - If this is the second poll, return Ready(()).
         if !self.have_yielded {
             self.have_yielded = true;
+            cx.waker().wake_by_ref();
             return Poll::Pending;
         }
         Poll::Ready(())

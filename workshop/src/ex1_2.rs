@@ -44,14 +44,43 @@ use std::task::{Context, Poll, Waker};
 use std::thread;
 use std::time::Duration;
 
+pub struct SharedState {
+    has_elapsed: bool,
+    opt_waker: Option<Waker>,
+}
+
+impl SharedState {
+    pub fn new() -> Self {
+        Self {
+            has_elapsed: false,
+            opt_waker: None,
+        }
+    }
+}
+
 pub struct Delay {
     // TODO: add a field holding shared state (Arc<Mutex<...>>)
+    state: Arc<Mutex<SharedState>>,
 }
 
 impl Delay {
     pub fn new(dur: Duration) -> Self {
         // TODO: create the shared state, spawn a timer thread, return Delay
-        Delay {}
+        let state = Arc::new(Mutex::new(SharedState::new()));
+
+        let two = state.clone();
+        thread::spawn(move || {
+            thread::sleep(dur);
+            // lock it -- oh ok. here.
+            let mut guard = two.lock().unwrap();
+            guard.has_elapsed = true;
+            if let Some(waker) = guard.opt_waker.take() {
+                waker.wake()
+            }
+        });
+        // You need to clone the Arc, move it into a thread::spawn closure,
+        // sleep for dur, then lock the state and do the signaling.
+        Delay { state }
     }
 }
 
@@ -60,7 +89,12 @@ impl Future for Delay {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         // TODO: lock the shared state, check if done, store waker if not
-        todo!()
+        let mut guard = self.state.lock().unwrap();
+        if guard.has_elapsed {
+            return Poll::Ready(());
+        }
+        guard.opt_waker = Some(cx.waker().clone());
+        Poll::Pending
     }
 }
 
